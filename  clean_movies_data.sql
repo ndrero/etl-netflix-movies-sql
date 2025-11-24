@@ -86,3 +86,75 @@ AND nr.director IS NULL;
 UPDATE netflix_raw
 SET director = 'Not Given'
 WHERE director IS NULL;
+
+-- Check null values at country column
+SELECT
+    trim(unnest(string_to_array(director, ','))) AS director,
+    country
+FROM netflix_raw
+WHERE director <> 'Not Given'
+ORDER BY director
+
+# This query and the previous do the same thing!
+# It happens because of a discouraged legacy behaviour called SRF in SELECT list 
+# (Set Returning Functions in SELECT list)
+# When we run the first query, Postgre does this behind the scenes:
+SELECT 
+    trim(d.value) AS director,
+    country
+FROM netflix_raw n,
+LATERAL unnest(string_to_array(n.director, ',')) AS d(value)
+WHERE director <> 'Not Given'
+ORDER BY director;
+# This is the recommended way of using set-returning functions
+
+-- Cross lateral join to find each country is more often related to each director
+# There is a need to use regexp_replace() cause trim() only remove traditional ASCII whitespaces
+SELECT 
+    trim(d.value) AS director,
+    trim(regexp_replace(c.value, '[\x00-\x1F\x7F]', 'g')) AS country,
+    COUNT(*) AS director_country_relation
+FROM netflix_raw n,
+LATERAL unnest(string_to_array(n.director, ',')) AS d(value),
+LATERAL unnest(string_to_array(country, ',')) AS c(value)
+WHERE director <> 'Not Given'
+GROUP BY d.value, c.value
+ORDER BY director ASC
+
+-- Update the country column, filling NULL values with the country that most frequently appears with the cast
+WITH director_country_relation AS (
+    SELECT 
+        trim(d.value) AS director,
+        trim(regexp_replace(c.value, '[\x00-\x1F\x7F]', '', 'g')) AS country,
+        COUNT(*) AS director_country_count
+    FROM netflix_raw n,
+    LATERAL unnest(string_to_array(n.director, ',')) AS d(value),
+    LATERAL unnest(string_to_array(n.country, ',')) AS c(value)
+    WHERE trim(d.value) <> 'Not Given'
+    GROUP BY trim(d.value), trim(regexp_replace(c.value, '[\x00-\x1F\x7F]', '', 'g'))
+), director_top_country AS (
+    SELECT 
+    dcr.*,
+    ROW_NUMBER() OVER (PARTITION BY dcr.director ORDER BY dcr.director_country_count DESC) AS rnk
+    FROM director_country_relation AS dcr
+) UPDATE netflix_raw nr
+SET country = (
+    SELECT 
+    dtc.country
+    FROM director_top_country AS dtc
+    WHERE EXISTS (
+        SELECT 1
+        FROM unnest(string_to_array(nr.director, ',')) AS dir(value)
+        WHERE trim(dir.value) = dtc.director
+    )
+    AND dtc.rnk = 1
+    LIMIT 1
+)
+WHERE nr.country IS NULL
+AND nr.director <> 'Not Given';
+
+-- Fill remaining null values with 'Not Given'
+UPDATE netflix_raw
+SET country = 'Not Given'
+WHERE country IS NULL;
+
