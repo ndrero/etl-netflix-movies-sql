@@ -158,3 +158,15 @@ UPDATE netflix_raw
 SET country = 'Not Given'
 WHERE country IS NULL;
 
+-- Look for null values on date_added, rating and duration
+SELECT * FROM netflix_raw 
+WHERE date_added IS NULL 
+OR rating is NULL
+OR duration is NULL
+
+-- Correct rows where duration information were at rating column
+UPDATE netflix_raw
+SET 
+    duration = rating,
+    rating = NULL
+WHERE rating LIKE '%min%';
