@@ -224,3 +224,7 @@ SET rating = (
     LIMIT 1
 )
 WHERE rating IS NULL;
+
+UPDATE netflix_raw 
+SET date_added = 'Not Given'
+WHERE date_added IS NULL
