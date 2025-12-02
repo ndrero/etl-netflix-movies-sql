@@ -170,3 +170,57 @@ SET
     duration = rating,
     rating = NULL
 WHERE rating LIKE '%min%';
+
+-- Breaks 'listed_in' columns into single rows
+SELECT 
+    nr.title,
+    nr.rating,
+    trim(l.value)
+FROM netflix_raw nr,
+LATERAL unnest(string_to_array(listed_in, ',')) AS l(value);
+
+-- Rank most frequent rating for each category
+WITH unnested_listed_in_cte AS (
+    SELECT 
+        nr.rating AS rating,
+        trim(l.value) category,
+        COUNT(nr.rating) rating_count
+    FROM netflix_raw nr,
+    LATERAL unnest(string_to_array(listed_in, ',')) AS l(value)
+    WHERE rating IS NOT NULL
+    GROUP BY trim(l.value), nr.rating
+)SELECT
+    cte.*,
+    ROW_NUMBER() OVER (PARTITION BY cte.category ORDER BY cte.rating_count DESC) AS rnk
+FROM unnested_listed_in_cte AS cte;
+
+
+WITH unnested_listed_in_cte AS (
+    SELECT 
+        nr.rating AS rating,
+        trim(l.value) category,
+        COUNT(*) rating_count
+    FROM netflix_raw nr
+    CROSS JOIN LATERAL unnest(string_to_array(nr.listed_in, ',')) AS l(value)
+    WHERE trim(l.value) <> 'Movie'
+    AND nr.rating IS NOT NULL
+    GROUP BY nr.rating, trim(l.value)
+), category_rank_cte AS (
+    SELECT
+        cte.*,
+        ROW_NUMBER() OVER (PARTITION BY cte.category ORDER BY cte.rating_count DESC) AS rnk
+    FROM unnested_listed_in_cte AS cte
+) UPDATE netflix_raw nr
+SET rating = (
+    SELECT rating
+    FROM category_rank_cte cr
+    WHERE cr.rnk = 1
+    AND EXISTS (
+            SELECT 1
+            FROM unnest(string_to_array(nr.listed_in, ',')) AS l(value)
+            WHERE trim(l.value) <> 'Movie'
+            AND trim(l.value) = cr.category
+        )
+    LIMIT 1
+)
+WHERE rating IS NULL;
