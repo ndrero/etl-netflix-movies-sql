@@ -1,110 +1,90 @@
-# Netflix Data Cleaning and Transformation (PostgreSQL)
+# Netflix Data Warehouse: ELT Pipeline
 
-## Overview
+Read this in: [English](#english) | [Portuguese](#portuguese)
+<a name="english"></a>
 
-This project presents a complete workflow for cleaning and transforming the Netflix titles dataset using PostgreSQL.
+This repository contains an **ELT (Extract, Load, Transform)** data pipeline that utilizes PostgreSQL to simulate a Data Warehouse environment. The project focuses on data cleaning and complex imputation using frequency-based logic.
 
-The raw dataset originally came as a CSV file.
-It was first imported into **SQLite**, generating the file `netflix.db` included in this repository.
-This file serves **only as the original raw dataset**.
+## ELT Architecture
 
-All cleaning, transformation, and standardization steps described in this project were performed **entirely inside PostgreSQL**, not in SQLite.
+Unlike the traditional ETL model, where data is cleaned before entering the database, this project applies the **Transform** phase directly within the destination:
 
-The repository contains both:
+1. **Extract & Load**: Raw data from the `netflix_titles.csv` file is loaded into the `raw` schema.
+2. **Transform**: SQL scripts process the data, utilizing temporary tables to calculate inferences before generating the final table in the `cleaned` schema.
 
-* `netflix.db` — original raw SQLite database (for reference)
-* PostgreSQL SQL scripts — full ETL pipeline
+## Imputation and Cleaning Logic
 
----
+The project replicates advanced Python behaviors (such as `pandas` and `collections.Counter`) using pure SQL:
 
-## 1.Extract
+* **Director Imputation**: Identifies the most frequent director for the cast of movies where this field is null.
+* **Country Inference**: Fills missing countries based on the filmography history of the directors (either original or inferred).
+* **Rating and Duration Normalization**: Corrects a common error in the Netflix dataset where the film duration (e.g., "90 min") appears in the rating column.
+* **Category-Based Voting**: Fills null ratings based on the mode (most common value) of the categories (`listed_in`) the title belongs to.
 
-The raw CSV was initially imported into SQLite:
+## Technologies
 
-```
-sqlite3 netflix.db
-.import netflix_raw_dataset.csv netflix_raw
-```
+* **Docker**: Database orchestration.
+* **PostgreSQL 16**: Processing and storage engine.
+* **SQL (DML/DDL)**: Core transformation logic.
 
-This generated the file `netflix.db`, which is included in the repository as the **raw data source**.
+## How to Execute
 
-After inspection, the data was migrated into PostgreSQL using:
-
-```
-\copy netflix_raw FROM 'netflix_raw_dataset.csv' CSV HEADER;
-```
-
-From this point forward, **all ETL steps were executed exclusively in PostgreSQL**.
-
-### 2. Transform
-
-#### a. Exploration
-
-* Verified dataset size and uniqueness of `show_id`.
-* Inspected the volume of missing values using `COUNT(*) FILTER (WHERE ...)`.
-* Checked for duplicates and structural inconsistencies.
-
-#### b. Handling Missing Values
-
-* Director: Filled using cast–director relationships; remaining nulls replaced with `"Not Given"`.
-* Country: Inferred from known director–country associations; remaining nulls set to `"Not Given"`.
-* Rating: FixedFilled using rating-listend_in relationships; remaining nulls replaced with `"Not Given"`
-* Duration: Some values belonging to duration were mistakenly stored in the rating column.These values were relocated to the correct column and standardized.Remaining incorrect or missing values were corrected or set to "Not Given" when appropriate.
-* Date Added: Rows with missing values had their missing values replaced to `"Not Given "`".
-
-#### c. Structural Adjustments
-
-* Dropped unused columns (`movie_cast`, `description`).
-* Standardized country using PostgreSQL string functions.
-* Ensured uniform formatting in textual fields.
-
-#### d. Validation
-
-* Confirmed absence of remaining nulls.
-* Verified column alignment and row counts.
-* Ensured consistency between related fields (e.g., director and country).
+1. Ensure the `data/netflix_titles.csv` file is present in the correct directory.
+2. Start the database environment using `docker-compose up -d`.
+3. The cleaning script will process the data automatically if placed in the `sql/` initialization folder, or it can be executed manually to generate the `cleaned.movies` table.
 
 ---
 
-### 3. Load
+### Final Implementation Note
 
-Cleaned data was written to a new table (e.g., `netflix_clean`) or exported as:
+To ensure the script runs successfully without a stored procedure, maintain the following execution order within your SQL file:
 
-```
-\copy netflix_clean TO 'netflix_clean.csv' CSV HEADER;
-```
+1. **Schema Creation**: Ensure `raw` and `cleaned` exist.
+2. **Data Ingestion**: `CREATE TABLE raw.movies` followed by the `COPY` command.
+3. **Temporary Tables**: Create `movie_top_director`, `movie_top_country`, and `movie_top_rating`.
+4. **Final Transformation**: Execute the `CREATE TABLE cleaned.movies` statement.
 
-The dataset is ready for analytical use or BI tools.
+<a name="portuguese"></a>
+
+# Data Warehouse Netflix: Pipeline ELT
+
+Este repositório contém um pipeline de dados **ELT (Extract, Load, Transform)** que utiliza o PostgreSQL para simular um ambiente de Data Warehouse. O projeto foca na limpeza e imputação de dados complexos através de lógica baseada em frequência.
+
+## Arquitetura ELT
+
+Diferente do modelo ETL tradicional, onde os dados são limpos antes de serem inseridos no banco de dados, este projeto aplica a fase de **Transformação** diretamente no destino:
+
+1. **Extração e Carga (Extract & Load)**: Os dados brutos do arquivo `netflix_titles.csv` são carregados no esquema `raw`.
+2. **Transformação (Transform)**: Scripts SQL processam os dados, utilizando tabelas temporárias para calcular inferências antes de gerar a tabela final no esquema `cleaned`.
+
+## Lógica de Imputação e Limpeza
+
+O projeto replica comportamentos avançados de bibliotecas Python (como `pandas` e `collections.Counter`) utilizando SQL puro:
+
+* **Imputação de Diretor**: Identifica o diretor mais frequente para o elenco de filmes onde este campo está nulo.
+* **Inferência de País**: Preenche países ausentes com base no histórico de filmografia dos diretores (originais ou inferidos).
+* **Normalização de Classificação e Duração**: Corrige um erro comum no conjunto de dados da Netflix, onde a duração do filme (ex: "90 min") aparece na coluna de classificação indicativa (`rating`).
+* **Votação Baseada em Categoria**: Preenche classificações nulas com base na moda (valor mais comum) das categorias (`listed_in`) às quais o título pertence.
+
+## Tecnologias
+
+* **Docker**: Orquestração do banco de dados.
+* **PostgreSQL 16**: Mecanismo de processamento e armazenamento.
+* **SQL (DML/DDL)**: Lógica central de transformação.
+
+## Como Executar
+
+1. Certifique-se de que o arquivo `data/netflix_titles.csv` esteja presente no diretório correto.
+2. Inicie o ambiente do banco de dados usando o comando `docker-compose up -d`.
+3. O script de limpeza processará os dados automaticamente se estiver na pasta de inicialização `sql/`, ou poderá ser executado manualmente para gerar a tabela `cleaned.movies`.
 
 ---
 
-## SQL Techniques Used
+### Nota de Implementação Final
 
-* `COUNT()`, `COUNT(DISTINCT)`
-* `FILTER (WHERE ...)` for null profiling
-* `UPDATE ... FROM` for conditional updates
-* `COALESCE()` for fallback values
-* `ALTER TABLE ... DROP COLUMN`
-* ``string_to_array()`, `unnest()`
-* Common Table Expressions (CTEs)
-* Window function (ROW_NUMBER())
+Para garantir que o script seja executado com sucesso sem a necessidade de uma procedure armazenada, mantenha a seguinte ordem de execução dentro do seu arquivo SQL:
 
----
-
-## Results and Insights
-
-* Director column had over 30% missing values; most were successfully imputed.
-* Strong correlation between director and country improved data completeness.
-* Final dataset is consistent, clean, and ready for reporting or visualization.
-
----
-
-## Project Structure
-
-```
-├── netflix_raw_dataset.csv      # Original CSV (optional, not included)
-├── netflix.db                   # Raw dataset in SQLite format (source only)
-├── cleaning_movies_data.sql     # Full PostgreSQL transformation pipeline
-├── netflix_clean.csv            # Final cleaned dataset (exported from PostgreSQL)
-└── README.md                    # Documentation
-```
+1. **Criação de Esquemas**: Garanta que `raw` e `cleaned` existam.
+2. **Ingestão de Dados**: `CREATE TABLE raw.movies` seguido pelo comando `COPY`.
+3. **Tabelas Temporárias**: Criação de `movie_top_director`, `movie_top_country` e `movie_top_rating`.
+4. **Transformação Final**: Execução da instrução `CREATE TABLE cleaned.movies`.
