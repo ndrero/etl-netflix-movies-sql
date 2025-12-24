@@ -4,12 +4,12 @@ SELECT
     rm.type,
     rm.title,
     COALESCE(rm.director, td.director, 'Not Given') AS director,
-    rm."cast",
+    COALESCE(rm."cast", 'Not Given') AS "cast",
     COALESCE(rm.country, tc.country, 'Not Given') AS country,
-    rm.date_added,
+    COALESCE(rm.date_added, 'Not Given') AS date_added,
     rm.release_year,
     CASE
-        WHEN rm.rating LIKE '%min%' THEN NULL 
+        WHEN rm.rating LIKE '%min%' THEN 'Not Given' 
         ELSE COALESCE(rm.rating, tr.rating, 'Not Given') 
     END AS rating,
     CASE 
